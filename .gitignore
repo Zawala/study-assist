@@ -12,3 +12,4 @@ data/**
 *.pdf
 *.md
 !/README.md
+!/docs/*.md

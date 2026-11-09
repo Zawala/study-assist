@@ -48,6 +48,12 @@
       changed_when: true
       tags: model
 
+    - name: Pull the llama3:8b chat model
+      ansible.builtin.command: ollama pull llama3:8b
+      when: "'llama3:8b' not in ollama_models.stdout"
+      changed_when: true
+      tags: model
+
     - name: Start the database and wait until it is healthy
       ansible.builtin.command:
         cmd: docker compose up -d --wait

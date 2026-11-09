@@ -8,6 +8,11 @@ This repository contains no study materials. Add your own copies of the PDFs to 
 
 Git ignores everything in `data/` except the empty folders, so your documents and everything generated from them stay on your machine.
 
+## Documentation
+
+- [Architecture](docs/architecture.md): how the parts fit together, with diagrams, design decisions, and current limitations
+- [Roadmap](docs/roadmap.md): ways to progress the project
+
 ## Repository layout
 
 ```text
@@ -17,11 +22,13 @@ Git ignores everything in `data/` except the empty folders, so your documents an
 │   ├── pdf_to_diagrams.py   Extracts diagrams and their captions
 │   ├── knowledge_base.py    Splits the text into passages; BM25 search
 │   ├── ingest_pgvector.py   Embeds passages and loads them into pgvector
+│   ├── chat.py              Answers questions from the loaded passages
 │   └── paths.py             Default data locations
 ├── data/                    Your local files, ignored by git
 │   ├── pdfs/                PDFs to convert
 │   ├── decks/               Study decks, which the scripts don't read
 │   └── generated/           Converted text and diagrams
+├── docs/                    Architecture and roadmap
 ├── ansible/setup.yml        Automated setup
 ├── db/init/                 Schema, applied when the database is first created
 ├── compose.yaml             pgvector database
@@ -35,7 +42,7 @@ You need Python 3.10 or later, Docker with Compose, and [Ollama](https://ollama.
 
 ### Automated setup
 
-With [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) installed and your converted text in `data/generated/` (step 2 below), this playbook handles the rest of the setup: it creates `.env` if it's missing, pulls `bge-m3`, starts the database, installs the Python dependencies, and loads 50 passages as a test:
+With [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) installed and your converted text in `data/generated/` (step 2 below), this playbook handles the rest of the setup: it creates `.env` if it's missing, pulls `bge-m3` and `llama3:8b`, starts the database, installs the Python dependencies, and loads 50 passages as a test:
 
 ```bash
 ansible-playbook ansible/setup.yml --ask-become-pass
@@ -67,6 +74,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt pymupdf4llm
 ollama pull bge-m3
+ollama pull llama3:8b
 ```
 
 ### 2. Add your PDFs to `data/pdfs/`, then convert them
@@ -93,6 +101,19 @@ python3 -m study_assist.ingest_pgvector
 ```
 
 Each run replaces the contents of the `chunks` table.
+
+## Ask questions
+
+```bash
+python3 -m study_assist.chat                        # start a chat
+python3 -m study_assist.chat "What is Phase A for?" # ask one question
+```
+
+Each answer is based only on the passages found for that question and lists the sources it cites. The search combines pgvector and BM25. If the database isn't running, the chat uses BM25 alone and prints a notice.
+
+The default model is `llama3:8b`. To use another Ollama model, pass `--model` or set `STUDY_CHAT_MODEL`. To see the passages sent to the model, add `--show-context`.
+
+On CPU, expect about a minute before an answer starts to appear. Press Ctrl+C to stop an answer, and type `exit` to quit.
 
 ## Keyword search
 
