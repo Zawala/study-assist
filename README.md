@@ -22,6 +22,7 @@ Git ignores everything in `data/` except the empty folders, so your documents an
 │   ├── pdfs/                PDFs to convert
 │   ├── decks/               Study decks, which the scripts don't read
 │   └── generated/           Converted text and diagrams
+├── ansible/setup.yml        Automated setup
 ├── db/init/                 Schema, applied when the database is first created
 ├── compose.yaml             pgvector database
 ├── .env.example             Database settings template
@@ -31,6 +32,33 @@ Git ignores everything in `data/` except the empty folders, so your documents an
 ## Setup
 
 You need Python 3.10 or later, Docker with Compose, and [Ollama](https://ollama.com). Run all commands from the repository root.
+
+### Automated setup
+
+With [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) installed and your converted text in `data/generated/` (step 2 below), this playbook handles the rest of the setup: it creates `.env` if it's missing, pulls `bge-m3`, starts the database, installs the Python dependencies, and loads 50 passages as a test:
+
+```bash
+ansible-playbook ansible/setup.yml --ask-become-pass
+```
+
+The password prompt is for `sudo`, which the playbook uses to run Docker. Ansible may warn that no inventory was parsed, which is harmless because the playbook only targets your local machine.
+
+To load every passage, or to re-run only some of the steps:
+
+```bash
+ansible-playbook ansible/setup.yml --ask-become-pass -e ingest_limit=0
+ansible-playbook ansible/setup.yml --tags python,ingest
+```
+
+The available tags are `model`, `database`, `python`, and `ingest`.
+
+On CPU, embedding takes about 0.4 to 2.8 seconds per passage, so a full load of about 2,700 passages can take from 20 minutes to 2 hours. Ansible shows no progress while a task runs, and nothing is saved until embedding finishes, so a failed run has to start over. To see progress, run the full load directly once the database is up:
+
+```bash
+.venv/bin/python -m study_assist.ingest_pgvector
+```
+
+To set up manually instead, follow these steps.
 
 ### 1. Install the dependencies
 

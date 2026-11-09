@@ -1,0 +1,88 @@
+---
+# Sets up this repo on the local machine. See README.md for usage.
+- name: Set up study-assist
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    repo_dir: "{{ playbook_dir | dirname }}"
+    venv_dir: "{{ repo_dir }}/.venv"
+    # Passages to load. Use 0 to load everything.
+    ingest_limit: 50
+
+  pre_tasks:
+    - name: Check that the required tools are installed
+      ansible.builtin.command: "{{ item }} --version"
+      loop:
+        - docker
+        - ollama
+        - python3
+      changed_when: false
+      check_mode: false
+      tags: always
+
+  tasks:
+    - name: Create .env with a random database password if it is missing
+      ansible.builtin.copy:
+        dest: "{{ repo_dir }}/.env"
+        force: false
+        mode: "0600"
+        content: |
+          POSTGRES_USER=postgres
+          POSTGRES_PASSWORD={{ lookup('ansible.builtin.password', '/dev/null', chars=['ascii_lowercase', 'digits'], length=48) }}
+          POSTGRES_DB=study
+          POSTGRES_PORT=5433
+      tags: database
+
+    - name: List installed Ollama models
+      ansible.builtin.command: ollama list
+      register: ollama_models
+      changed_when: false
+      check_mode: false
+      tags: model
+
+    - name: Pull the bge-m3 embedding model
+      ansible.builtin.command: ollama pull bge-m3
+      when: "'bge-m3' not in ollama_models.stdout"
+      changed_when: true
+      tags: model
+
+    - name: Start the database and wait until it is healthy
+      ansible.builtin.command:
+        cmd: docker compose up -d --wait
+        chdir: "{{ repo_dir }}"
+      become: true
+      register: compose_up
+      changed_when: "'Started' in compose_up.stdout + compose_up.stderr"
+      tags: database
+
+    - name: Install Python dependencies into the virtual environment
+      ansible.builtin.pip:
+        requirements: "{{ repo_dir }}/requirements.txt"
+        virtualenv: "{{ venv_dir }}"
+        virtualenv_command: python3 -m venv
+      tags: python
+
+    - name: Check that the converted text exists
+      ansible.builtin.stat:
+        path: "{{ repo_dir }}/data/generated/source-text.md"
+      register: source_text
+      tags: ingest
+
+    - name: Stop if the PDFs have not been converted
+      ansible.builtin.assert:
+        that: source_text.stat.exists
+        fail_msg: >-
+          data/generated/source-text.md is missing. Add PDFs to data/pdfs/ and run
+          python3 -m study_assist.pdf_to_markdown, then re-run this playbook.
+      tags: ingest
+
+    - name: Embed passages and load them into pgvector
+      ansible.builtin.command:
+        cmd: >-
+          {{ venv_dir }}/bin/python -m study_assist.ingest_pgvector
+          {{ '--limit ' ~ ingest_limit if ingest_limit | int > 0 else '' }}
+        chdir: "{{ repo_dir }}"
+      changed_when: true
+      tags: ingest
