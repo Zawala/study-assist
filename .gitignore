@@ -1,0 +1,14 @@
+# Secrets and local Python files
+.env
+.venv/
+__pycache__/
+
+# Study materials stay local; see README.md. Git keeps only the empty folders.
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# Never commit these from anywhere else in the repo either.
+*.pdf
+*.md
+!/README.md
